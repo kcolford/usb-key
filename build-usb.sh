@@ -1,23 +1,25 @@
 #!/bin/bash
 set -euo pipefail
 
-sgdisk -z -o "$1"		 # clear
-sgdisk -n 0:0:+1M -t 0:ef02 "$1" # grub boot
-sgdisk -n 0:0:0 -t 0:ef00 "$1"	 # data and efi
-sgdisk -h 2 "$1"		 # hybrid main
-sfdisk -Y dos -A "$1" 2		 # bootable main
-sudo partprobe
+sgdisk -z -o -n 0:0:+1M -t 0:ef02 -n 0:0:+50M -t 0:ef00 -n 0:0:0 -h 1,2,3 "$1"
+[ -b "$1" ] && l="$1" || l="$(losetup -f "$1")"
+partprobe
 
-# setup loopback
-f="$1"
-[ -b "$1" ] || f="$(sudo losetup -f "$f")"
+p2=/dev/"$(lsblk -no pkname,kname | awk "/[^0-9]2\$/&&\$1==\"$(basename "$l")\"{print \$2}")"
+umount "$p2" || :
+mkfs.fat -n EFI "$p2"
+efi=/run/media/"$USER"/EFI
+mount -o X-mount.mkdir "$p2" "$efi"
 
-# make filesystem on 2nd partition
-secondpart="$(lsblk -no pkname,kname | awk "/[^0-9]2\$/&&\$1==\"$(lsblk -no kname "$f")\"{print \$2}")"
-sudo mkfs.fat /dev/"$secondpart"
+p3=/dev/"$(lsblk -no pkname,kname | awk "/[^0-9]3\$/&&\$1==\"$(basename "$l")\"{print \$2}")"
+umount "$p3" || :
+mkfs.fat -n KCOLFORD "$p3"
+data=/run/media/"$USER"/KCOLFORD
+mount -o X-mount.mkdir "$p3" "$data"
 
-sudo mount "$f" /mnt
-sudo cp -r "$(dirname "$0")"/*.sh /mnt/
-sudo umount "$f"
+grub-install --target=x86_64-efi --recheck --removable --efi-directory="$efi" --boot-directory="$data"/boot
+grub-install --target=i386-pc --recheck --boot-directory="$data"/grub "$l"
 
-losetup -d "$f"
+umount "$p3"
+umount "$p2"
+[ -b "$1" ] || losetup -d "$l"
