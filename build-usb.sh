@@ -17,8 +17,28 @@ mkfs.fat -n KCOLFORD "$p3"
 data=/run/media/"$USER"/KCOLFORD
 mount -o X-mount.mkdir "$p3" "$data"
 
-grub-install --target=x86_64-efi --recheck --removable --efi-directory="$efi" --boot-directory="$data"/boot
-grub-install --target=i386-pc --recheck --boot-directory="$data"/grub "$l"
+boot="$data"/boot
+
+grub-install --target=x86_64-efi --recheck --removable --efi-directory="$efi" --boot-directory="$boot"
+grub-install --target=i386-pc --recheck --boot-directory="$boot" "$l"
+
+cat > "$boot"/grub/grub.cfg <<'EOF'
+set imgdevpath="/dev/disk/by-label/KCOLFORD"
+
+menuentry 'archiso' {
+	set isofile='/boot/archiso.iso'
+	loopback loop $isofile
+	linux (loop)/arch/boot/x86_64/vmlinuz img_dev=$imgdevpath img_loop=$isofile earlymodules=loop
+	initrd (loop)/arch/boot/intel_ucode.img (loop)/arch/boot/amd_ucode.img (loop)/arch/boot/x86_64/archiso.img
+}
+
+menuentry 'archboot' {
+	set isofile='/boot/archboot.iso'
+	loopback loop $isofile
+	linux (loop)/boot/vmlinuz_x86_64 iso_loop_dev=$imgdevpath iso_loop_path=$isofile
+	initrd (loop)/boot/initramfs_x86_64.img
+}
+EOF
 
 umount "$p3"
 umount "$p2"
